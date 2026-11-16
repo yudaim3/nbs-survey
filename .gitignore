@@ -1,0 +1,39 @@
+# Runtime data, including survey answers and administrator credentials
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+*.pid
+__pycache__/
+*.py[cod]
+
+# Local dependencies and environment configuration
+node_modules/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Reports, backups and local screenshots
+exports/
+backups/
+*.xlsx
+*.xls
+*.csv
+*.zip
+*.png
+*.jpg
+*.jpeg
+
+# Editor and OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
