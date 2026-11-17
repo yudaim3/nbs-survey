@@ -1,0 +1,53 @@
+# Standalone production configuration. Do not merge with compose.yaml.
+# Keep the existing project/volume name so app updates retain the database.
+name: nbs-workation
+services:
+  app:
+    build: .
+    environment:
+      PUBLIC_URL: "https://${DOMAIN:?Set DOMAIN in .env.production}"
+      ALLOWED_HOSTS: "127.0.0.1:8765"
+      ALLOW_ADMIN_SETUP: "false"
+      SECURE_COOKIE: "true"
+    volumes:
+      - survey-data:/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  proxy:
+    image: caddy:2.11.2-alpine
+    environment:
+      SITE_ADDRESS: "https://${DOMAIN:?Set DOMAIN in .env.production}"
+      TLS_CONFIG: ""
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app: {condition: service_healthy}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+volumes:
+  survey-data:
+  caddy-data:
+  caddy-config:

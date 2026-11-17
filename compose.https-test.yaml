@@ -1,0 +1,71 @@
+# Isolated HTTPS test, bound to this PC only. Never use this as production config.
+name: nbs-workation-https-check
+x-app-env: &app-env
+  PUBLIC_URL: "https://localhost:8443"
+  ALLOWED_HOSTS: "127.0.0.1:8765"
+  ALLOW_ADMIN_SETUP: "false"
+  SECURE_COOKIE: "true"
+services:
+  init:
+    image: nbs-workation-https-check:local
+    build: .
+    user: "0:0"
+    environment: *app-env
+    entrypoint: [python, /checks/bootstrap_https.py]
+    volumes:
+      - https-check-data:/data
+      - https-check-state:/test-state
+      - ./tests:/checks:ro
+    network_mode: none
+    profiles: [checks]
+  app:
+    image: nbs-workation-https-check:local
+    build: .
+    environment: *app-env
+    volumes:
+      - https-check-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+  proxy:
+    image: caddy:2.11.2-alpine
+    environment:
+      SITE_ADDRESS: "https://localhost:8443"
+      TLS_CONFIG: "tls internal"
+    ports:
+      - "127.0.0.1:8443:8443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - https-check-caddy-data:/data
+      - https-check-caddy-config:/config
+    depends_on:
+      app: {condition: service_healthy}
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+  check:
+    image: nbs-workation-https-check:local
+    user: "0:0"
+    entrypoint: [python, /checks/https_smoke.py]
+    network_mode: "service:proxy"
+    environment:
+      NBS_TEST_BASE_URL: "https://localhost:8443"
+      NBS_TEST_CA: /certificates/caddy/pki/authorities/local/root.crt
+    volumes:
+      - ./tests:/checks:ro
+      - https-check-state:/test-state
+      - https-check-caddy-data:/certificates:ro
+    profiles: [checks]
+volumes:
+  https-check-data:
+  https-check-state:
+  https-check-caddy-data:
+  https-check-caddy-config:

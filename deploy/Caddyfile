@@ -1,0 +1,10 @@
+{
+    skip_install_trust
+}
+
+{$SITE_ADDRESS} {
+    {$TLS_CONFIG}
+    encode zstd gzip
+    reverse_proxy app:8765
+    header Strict-Transport-Security "max-age=31536000"
+}

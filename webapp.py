@@ -1,4 +1,4 @@
-"""Portable WSGI application for NBS WORKATION."""
+"""Portable WSGI application for NBS SURVEY."""
 import hashlib
 import hmac
 import json
@@ -187,7 +187,35 @@ def create_app(config=None):
     @app.get('/api/surveys')
     @app.get('/api/admin/surveys')
     def surveys():
-        return jsonify(surveys=survey.list_surveys(admin=request.path.startswith('/api/admin/')))
+        items = survey.list_surveys(admin=request.path.startswith('/api/admin/'))
+        category = request.args.get('category')
+        if category: items = [s for s in items if s['event']['category'] == category]
+        return jsonify(surveys=items, categories=survey.list_categories())
+
+    @app.get('/api/categories')
+    def categories():
+        return jsonify(categories=survey.list_categories())
+
+    @app.post('/api/admin/categories')
+    def add_category():
+        body = request.get_json()
+        if not isinstance(body, dict): raise ValueError('入力形式が正しくありません。')
+        name, created = survey.add_category(body.get('name'))
+        return jsonify(name=name, created=created, categories=survey.list_categories()), 201 if created else 200
+
+    @app.get('/api/admin/template')
+    def template():
+        return jsonify(schema=survey.SCHEMA)
+
+    @app.get('/api/admin/templates')
+    def templates():
+        return jsonify(templates=survey.list_templates())
+
+    @app.post('/api/admin/templates')
+    @app.post('/api/admin/templates/update')
+    def save_template():
+        result, status = survey.save_template(request.get_json(), updating=request.path.endswith('/update'))
+        return jsonify(result), status
 
     @app.get('/api/schema')
     def schema():
@@ -213,7 +241,7 @@ def create_app(config=None):
             data = survey.snapshot(request.args.get('survey', ''))
             data['summary'] = survey.summarize(data)
             return send_file(export_workbook(data), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                             as_attachment=True, download_name='nbs-workation-survey.xlsx')
+                             as_attachment=True, download_name='nbs-survey.xlsx')
         except (LookupError, ValueError):
             raise
         except Exception:
@@ -248,6 +276,7 @@ def create_app(config=None):
     def create_survey():
         body = request.get_json()
         event = survey.validate_event(body)
+        schema = survey.validate_schema(body['schema']) if 'schema' in body else survey.SCHEMA
         sid = body.get('id', '')
         try:
             uuid.UUID(sid)
@@ -255,13 +284,13 @@ def create_app(config=None):
             raise ValueError('作成IDが正しくありません。画面を再読み込みしてください。')
         with survey.connect() as c:
             c.execute('BEGIN IMMEDIATE')
-            old = c.execute('SELECT event FROM surveys WHERE id=?', (sid,)).fetchone()
+            old = c.execute('SELECT event,schema_json FROM surveys WHERE id=?', (sid,)).fetchone()
             if old:
-                if json.loads(old[0]) != event:
+                if survey.event_defaults(json.loads(old[0])) != event or json.loads(old[1]) != schema:
                     return error('作成済みのアンケートです。一覧から確認してください。', 409)
                 return jsonify(id=sid)
             c.execute('INSERT INTO surveys VALUES (?,?,?,?,?)',
-                      (sid, survey.now(), json.dumps(event, ensure_ascii=False), json.dumps(survey.SCHEMA, ensure_ascii=False), 'open'))
+                      (sid, survey.now(), json.dumps(event, ensure_ascii=False), json.dumps(schema, ensure_ascii=False), 'open'))
         return jsonify(id=sid), 201
 
     @app.post('/api/admin/event')
@@ -282,7 +311,7 @@ def create_app(config=None):
         return jsonify(ok=True)
 
     files = {'': 'list.html', 'survey': 'index.html', 'admin': 'admin.html',
-             'style.css': 'style.css', 'app.js': 'app.js', 'admin.js': 'admin.js', 'list.js': 'list.js'}
+             'style.css': 'style.css', 'app.js': 'app.js', 'admin.js': 'admin.js', 'list.js': 'list.js', 'builder.js': 'builder.js'}
 
     @app.get('/')
     @app.get('/<path:page>')

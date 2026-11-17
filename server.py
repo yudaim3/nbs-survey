@@ -1,4 +1,4 @@
-"""Start NBS WORKATION with Python, without Codex or Node.js."""
+"""Start NBS SURVEY with Python, without Codex or Node.js."""
 import argparse
 import getpass
 import logging
@@ -31,7 +31,7 @@ def main():
         print('管理者を設定しました。')
         return
     logging.basicConfig(level=logging.INFO)
-    print(f'NBS WORKATION: http://localhost:{args.port}/admin', flush=True)
+    print(f'NBS SURVEY: http://localhost:{args.port}/admin', flush=True)
     serve(app, host=args.host, port=args.port, threads=8,
           max_request_body_size=250000, channel_timeout=60, clear_untrusted_proxy_headers=True)
 

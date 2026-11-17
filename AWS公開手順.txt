@@ -1,0 +1,116 @@
+NBS SURVEY — AWS EC2での公開手順
+
+現在の状態
+本番用の構成ファイルを用意しています。AWSへの配置や実際の公開はまだ行っていません。
+公開URLは未定です。ドメインが決まった後、.env.production に設定してください。
+別PCでのDockerテストを先に行い、成功を確認してから進めます。
+
+構成
+ブラウザー → HTTPS（443番）→ Caddy → アンケートアプリ → SQLite
+Caddyとアプリは同じEC2上でDockerコンテナとして動きます。
+アプリの8765番ポートは、本番用の構成では外部に公開しません。
+回答・カテゴリー・ひな形・管理者設定はDockerの保存領域に保持します。
+RDSやCodexは必須ではありません。
+
+用意するもの
+・Docker Engine / Docker Composeを使えるLinuxのEC2（または社内で用意済みの同等サーバー）
+・固定の接続先IPと公開するドメイン／サブドメイン
+・DNSを変更する権限
+・EC2の通信許可設定を変更する権限
+・データを保存するディスクと、別の場所への定期バックアップ
+
+この手順はEC2の作成、課金、DNSの購入、通信設定の変更を自動で行いません。
+既に別のサービスが80番・443番を使用しているEC2では、その管理者とプロキシ構成を調整してください。
+
+1. ドメインをEC2に向ける
+例：survey.example.com のDNSのAレコードを、EC2の固定IPへ向けます。
+IPv6を使っていない場合、到達できないAAAAレコードを残さないでください。
+AWSのセキュリティグループで、HTTP 80番とHTTPS 443番の受信を許可します。
+管理用SSHを使う場合、22番は管理者の接続元に制限します。
+8765番、SQLite、Caddy管理APIの2019番は外部に開けません。
+
+2. 最新ソースをEC2に置く
+最新版をGitから取得するか、配布ZIPを展開して、そのフォルダーに移動します。
+以降のコマンドは、そのフォルダーで実行してください。
+本番用は compose.production.yaml 単独で使います。compose.yaml と重ねて起動しません。
+
+3. 公開URLを設定
+次のコマンドで設定ファイルをコピーします。
+
+cp .env.production.example .env.production
+
+.env.production を編集して、次のように設定します。
+
+DOMAIN=survey.example.com
+
+DOMAINには実際に所有・管理するホスト名だけを入力します。
+https://、末尾の /、パス、ポート番号は付けません。
+未設定では本番起動できないようにしています。
+.env.production はGitや配布ZIPに含めません。
+
+4. 設定確認とビルド
+docker compose --env-file .env.production -f compose.production.yaml config --quiet
+docker compose --env-file .env.production -f compose.production.yaml build app
+docker compose --env-file .env.production -f compose.production.yaml run --rm --no-deps proxy caddy validate --config /etc/caddy/Caddyfile
+
+5. 初回の管理者設定（新規DBの場合のみ）
+docker compose --env-file .env.production -f compose.production.yaml run --rm --no-deps app python server.py --create-admin
+
+画面の案内に従って管理者ID・パスワードを入力します。
+既に管理者がいるDBでは上書きできません。以前のID/PWを使ってください。
+本番ではWeb画面からの初回管理者登録を無効にしています。
+
+6. 起動
+docker compose --env-file .env.production -f compose.production.yaml up -d --wait --wait-timeout 180
+
+DNSと通信設定が正しければ、Caddyが公開用証明書を取得し、HTTPSで受け付けます。
+HTTPでのアクセスはHTTPSへ転送されます。
+利用者画面：https://実際のドメイン/
+管理者画面：https://実際のドメイン/admin
+
+コンテナの起動成功だけでは、公開用証明書の取得成功まで保証されません。
+別のネットワークのPC・スマートフォンから、証明書警告なしで表示できることを確認してください。
+ログイン、回答URL共有、送信、集計、Excel出力、ログアウトを確認します。
+自動起動・バックアップ・復元の運用も決めてから本番利用を開始します。
+
+7. 更新・停止
+Gitで管理している場合、最新版を取得してから再ビルドします。
+
+git pull --ff-only
+docker compose --env-file .env.production -f compose.production.yaml up -d --build --wait --wait-timeout 180
+
+停止：
+docker compose --env-file .env.production -f compose.production.yaml stop
+
+ログ：
+docker compose --env-file .env.production -f compose.production.yaml logs --tail 100
+
+8. 保存とバックアップ
+プロジェクト名は既存版と同じ nbs-workation です。
+DB保存領域は nbs-workation_survey-data。証明書は nbs-workation_caddy-data に保存します。
+通常版と本番版を同じDocker環境で同時に起動しないでください。
+Dockerのボリュームが消えなければ、コンテナ更新後もデータを使えます。
+EC2やディスクを削除した場合まで保存される保証はありません。
+docker compose down -v やDockerのボリューム削除は実行しないでください。
+
+稼働中のDBをバックアップする例（YYYYMMDD-HHMMSS は実際の日時へ置き換えます）：
+mkdir -p backups
+docker compose --env-file .env.production -f compose.production.yaml exec app python data_transfer.py /data/survey.sqlite3 /data/backups/YYYYMMDD-HHMMSS.sqlite3
+docker compose --env-file .env.production -f compose.production.yaml cp app:/data/backups/YYYYMMDD-HHMMSS.sqlite3 backups/YYYYMMDD-HHMMSS.sqlite3
+
+同じ名前のファイルには上書きしません。
+backupsフォルダーのファイルを、S3などEC2と別の保管先へ定期的にコピーする運用を追加してください。
+コピー先の権限、実行頻度、保存期間はAWSの運用担当者と決めます。この自動転送はまだ設定していません。
+バックアップには回答と管理者の認証情報が含まれます。公開フォルダーに置かないでください。
+復元時はアプリを停止し、別の空の保存領域へ data_transfer.py でコピーして確認します。
+元データを上書きして試さず、まず別環境で管理者ログイン・件数・Excel出力を確認してください。
+
+補足
+アプリは任意の転送ヘッダーを信用しない設定です。
+プロキシ経由のログイン失敗回数の制限は利用者間で共有されるため、複数人が失敗すると一時的にログインが制限されることがあります。
+この構成はEC2 1台・アプリ1台を想定しています。複数サーバーへ増やす場合はDB構成も見直します。
+
+公式資料
+Caddy Docker：https://caddyserver.com/docs/running#docker-compose
+Caddy HTTPS：https://caddyserver.com/docs/automatic-https
+AWS通信設定：https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-security-groups.html

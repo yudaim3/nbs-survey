@@ -1,4 +1,4 @@
-NBS WORKATION — このWindows PCへのDocker導入手順
+NBS SURVEY — このWindows PCへのDocker導入手順
 
 現在の状況
 ・Dockerは未導入です。
@@ -10,7 +10,7 @@ NBS WORKATION — このWindows PCへのDocker導入手順
 
 管理者が分からなければ、次をそのまま社内の担当者へ渡してください。
 
-「NBS WORKATIONのローカル動作確認用に、WSL 2とDockerの利用環境を準備したいです。
+「NBS SURVEYのローカル動作確認用に、WSL 2とDockerの利用環境を準備したいです。
 このPCではWSLとVirtual Machine Platformが無効です。
 会社の利用ルールと、Docker Desktopの利用契約・インストール権限をご確認ください。
 必要なWindows機能の有効化、再起動、Docker起動までの対応をお願いします。

@@ -42,7 +42,7 @@ def export_workbook(data):
     schema, responses, event, summary = (data[key] for key in ('schema', 'responses', 'event', 'summary'))
     wb = Workbook()
     wb.remove(wb.active)
-    wb.properties.creator = 'NBS WORKATION'
+    wb.properties.creator = 'NBS SURVEY'
 
     def sheet(name, title, headers, rows, widths):
         ws = wb.create_sheet(name)
@@ -87,40 +87,54 @@ def export_workbook(data):
         return ws
 
     questions = summary['questions']
+    legacy = schema.get('version', 1) == 1
     basics = [
         ['開催名', event['title'], ''],
         ['実施期間', ' ～ '.join(v for v in (event['start'], event['end']) if v), ''],
         ['実施場所', event['place'], ''],
         ['回答件数', summary['total'], '受付件数を集計（必須化前の氏名未入力の回答も含む）'],
-        ['全体満足度（平均）', questions['q1']['average'], f"5点満点・有効回答 {questions['q1']['answered']} 件"],
-        ['仕事のしやすさ（平均）', questions['q2']['average'], f"5点満点・有効回答 {questions['q2']['answered']} 件"],
-        ['コミュニケーション改善の割合', summary['communication_rate'], f"Q5の肯定的2区分 / 有効回答 {questions['q5']['answered']} 件"],
         ['出力日時', excel_time(data['exported_at']), '日本時間'],
         ['集計方法', '出力時点の確定値', '空欄は未回答。割合の分母は各設問の有効回答数。'],
         ['回答の取扱い', '1送信を1件として集計', 'ログインなしのため、同一人物の別送信は自動で判別しません。'],
         ['', '', ''], ['設問・選択肢', '人数', '有効回答に対する割合'],
     ]
+    if legacy:
+        basics[4:4] = [
+        ['全体満足度（平均）', questions['q1']['average'], f"5点満点・有効回答 {questions['q1']['answered']} 件"],
+        ['仕事のしやすさ（平均）', questions['q2']['average'], f"5点満点・有効回答 {questions['q2']['answered']} 件"],
+        ['コミュニケーション改善の割合', summary['communication_rate'], f"Q5の肯定的2区分 / 有効回答 {questions['q5']['answered']} 件"],
+        ]
+    basics.insert(10 if legacy else 4, ['カテゴリー', event.get('category', 'ワーケーション'), ''])
+    if not legacy:
+        basics.append(['各設問の回答状況', '回答件数', '未回答件数'])
+        basics.extend([q['title'], questions[q['id']]['answered'], f"{questions[q['id']]['missing']} 件"] for q in schema['questions'])
     for q in schema['questions']:
-        if q['type'] == 'single':
+        if q['type'] in ('single', 'select', 'scale', 'date'):
             item = questions[q['id']]
             basics.append([q['title'], None, None])
             basics.extend([option, count, count / item['answered'] if item['answered'] else None]
                           for option, count in item['counts'].items())
             basics.append(['未回答', item['missing'], None])
-    basics.extend([['', '', ''], ['Q12 必要な水回り', '人数', '集計区分']])
-    for row in questions['q12']['rows']:
-        basics.extend([row['label'], count, value] for value, count in row['counts'].items())
-        basics.append([row['label'], row['missing'], '未回答'])
+    for q in schema['questions']:
+        item = questions[q['id']]
+        if q['type'] in ('number', 'scale'):
+            basics.extend([[q['title'] + ' 平均', item['average'], f"有効回答 {item['answered']} 件"], ['最小値', item['minimum'], ''], ['最大値', item['maximum'], '']])
+        if q['type'] == 'count':
+            basics.append([q['title'], '人数', '集計区分'])
+            for row in item['rows']:
+                basics.extend([row['label'], count, value] for value, count in row['counts'].items())
+                basics.append([row['label'], row['missing'], '未回答'])
     main = sheet('集計サマリー', f"{event['title']} アンケート集計", ['項目', '結果', '補足'], basics, [56, 58, 65])
-    main['B9'].number_format = main['B10'].number_format = '0.00'
-    main['B11'].number_format = '0.0%'
+    if legacy:
+        main['B9'].number_format = main['B10'].number_format = '0.00'
+        main['B11'].number_format = '0.0%'
     for index, row in enumerate(basics, 5):
         if isinstance(row[2], (int, float)):
             main.cell(index, 3).number_format = '0.0%'
 
-    equipment = [[r[key] for key in ('label', 'answered', 'average', 'low', 'missing')]
-                 for r in questions['q7']['rows']]
-    eq = sheet('設備評価', 'Q7 設備・環境の評価', ['設備・環境', '有効回答数', '平均（5点満点）', '低評価（1〜2）', '未回答'], equipment, [35, 18, 22, 22, 18])
+    equipment = [[r['label'] if legacy else f"Q{q['number']} {q['title']} / {r['label']}", *[r[key] for key in ('answered', 'average', 'low', 'missing')]]
+                 for q in schema['questions'] if q['type'] == 'rating' for r in questions[q['id']]['rows']]
+    eq = sheet('設備評価' if legacy else '項目別評価', '項目別の5段階評価', ['設備・環境', '有効回答数', '平均（5点満点）', '低評価（1〜2）', '未回答'], equipment, [35, 18, 22, 22, 18])
     for index in range(5, 5 + len(equipment)):
         eq.cell(index, 3).number_format = '0.00'
 
@@ -139,10 +153,10 @@ def export_workbook(data):
     texts = []
     for response in responses:
         for q in schema['questions']:
-            value = response['answers'].get(q['id']) if q['type'] == 'text' else response['other'].get(q['id'])
+            value = response['answers'].get(q['id']) if q['type'] in ('text', 'shorttext') else response['other'].get(q['id'])
             if value:
                 parts = chunks(value)
-                texts.extend([response['id'], response['name'], f"Q{q['number']}" + ('' if q['type'] == 'text' else ' その他'),
+                texts.extend([response['id'], response['name'], f"Q{q['number']}" + ('' if q['type'] in ('text', 'shorttext') else ' その他'),
                               q['title'], index, len(parts), part] for index, part in enumerate(parts, 1))
     sheet('自由記述一覧', '自由記述の原文（長文は同じ受付ID・設問の連番で続きます）',
           ['受付ID', '回答者名', '設問', '質問内容', '連番', '分割数', '回答原文'], texts, [40, 22, 16, 52, 10, 10, 100])
@@ -152,7 +166,7 @@ def export_workbook(data):
         for q in schema['questions']:
             answer = response['answers'].get(q['id'])
             prefix = [response['id'], excel_time(response['created_at']), response['name'], f"Q{q['number']}"]
-            if q['type'] == 'single':
+            if q['type'] in ('single', 'select', 'scale', 'date', 'number', 'text', 'shorttext'):
                 raw.append(prefix + [q['title'], answer])
             elif q['type'] == 'multi':
                 raw.extend(prefix + [option, None if answer is None else int(option in answer)] for option in q['options'])
@@ -163,12 +177,13 @@ def export_workbook(data):
     sheet('回答データ', '回答データ（複数選択は選択1・未選択0、未回答は空欄）',
           ['受付ID', '受付日時（日本時間）', '回答者名', '設問', '項目', '回答'], raw, [40, 30, 22, 10, 58, 50])
 
-    types = dict(text='自由記述', single='単一選択', multi='複数選択', rating='5段階評価', count='必要数')
+    types = dict(text='自由記述', single='単一選択', multi='複数選択', rating='5段階評価', count='必要数', select='プルダウン', shorttext='自由入力（1行）', number='数値', date='日付', scale='5段階評価')
     rows = []
     for q in schema['questions']:
         condition = (f"最大{q['max']}つ" if q.get('max') else
-                     '「特になし」は他の項目と同時選択不可' if q['id'] == 'q8' else
-                     '1・2・3・4・5・6以上。6以上を6として平均計算しない。' if q['id'] == 'q12' else '')
+                     '「特になし」は他の項目と同時選択不可' if '特になし' in q.get('options', []) else
+                     '1・2・3・4・5・6以上。6以上を6として平均計算しない。' if q['type'] == 'count' else '')
+        condition = ('必須' if q.get('required', True) else '任意') + (' / ' + condition if condition else '')
         rows.append([f"Q{q['number']}", schema['sections'][q['section']-1], q['title'],
                      types[q['type']], '\n'.join(q.get('options', [])), condition])
     sheet('設問一覧', 'アンケートの設問と選択肢', ['設問', 'セクション', '質問内容', '回答形式', '項目・選択肢', '条件'], rows, [10, 42, 64, 18, 58, 48])

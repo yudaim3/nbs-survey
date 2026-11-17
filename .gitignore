@@ -22,12 +22,14 @@ venv/
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.pem
 *.key
 
 # Reports, backups and local screenshots
 exports/
 backups/
+test-results/
 *.xlsx
 *.xls
 *.csv
