@@ -106,6 +106,8 @@ def validate(body,schema=SCHEMA):
         if value: result[q['id']]=value
     name=body.get('name','')
     if not isinstance(name,str) or len(name)>100: raise ValueError('回答者名は100文字以内で入力してください。')
+    if not name.strip(): raise ValueError('回答者名を入力してください。')
+    if '　' in name: raise ValueError('スペースは半角にしてください。')
     other=body.get('other',{})
     if not isinstance(other,dict): raise ValueError('補足の形式が正しくありません。')
     cleaned={}

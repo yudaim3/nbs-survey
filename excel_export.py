@@ -91,7 +91,7 @@ def export_workbook(data):
         ['開催名', event['title'], ''],
         ['実施期間', ' ～ '.join(v for v in (event['start'], event['end']) if v), ''],
         ['実施場所', event['place'], ''],
-        ['回答件数', summary['total'], '回答者名の入力有無によらず受付件数を集計'],
+        ['回答件数', summary['total'], '受付件数を集計（必須化前の氏名未入力の回答も含む）'],
         ['全体満足度（平均）', questions['q1']['average'], f"5点満点・有効回答 {questions['q1']['answered']} 件"],
         ['仕事のしやすさ（平均）', questions['q2']['average'], f"5点満点・有効回答 {questions['q2']['answered']} 件"],
         ['コミュニケーション改善の割合', summary['communication_rate'], f"Q5の肯定的2区分 / 有効回答 {questions['q5']['answered']} 件"],
@@ -145,7 +145,7 @@ def export_workbook(data):
                 texts.extend([response['id'], response['name'], f"Q{q['number']}" + ('' if q['type'] == 'text' else ' その他'),
                               q['title'], index, len(parts), part] for index, part in enumerate(parts, 1))
     sheet('自由記述一覧', '自由記述の原文（長文は同じ受付ID・設問の連番で続きます）',
-          ['受付ID', '回答者名（任意）', '設問', '質問内容', '連番', '分割数', '回答原文'], texts, [40, 22, 16, 52, 10, 10, 100])
+          ['受付ID', '回答者名', '設問', '質問内容', '連番', '分割数', '回答原文'], texts, [40, 22, 16, 52, 10, 10, 100])
 
     raw = []
     for response in responses:
@@ -161,7 +161,7 @@ def export_workbook(data):
                     value = (answer or {}).get(option)
                     raw.append(prefix + [option, value if value in (None, '6以上') else int(value)])
     sheet('回答データ', '回答データ（複数選択は選択1・未選択0、未回答は空欄）',
-          ['受付ID', '受付日時（日本時間）', '回答者名（任意）', '設問', '項目', '回答'], raw, [40, 30, 22, 10, 58, 50])
+          ['受付ID', '受付日時（日本時間）', '回答者名', '設問', '項目', '回答'], raw, [40, 30, 22, 10, 58, 50])
 
     types = dict(text='自由記述', single='単一選択', multi='複数選択', rating='5段階評価', count='必要数')
     rows = []

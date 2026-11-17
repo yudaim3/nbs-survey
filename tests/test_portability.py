@@ -58,6 +58,23 @@ class PortabilityTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/auth/setup', data='{}', content_type='text/plain').status_code, 415)
         self.assertEqual(self.client.post('/api/auth/setup', data='x' * 250001, content_type='application/json').status_code, 413)
 
+    def test_required_name_and_halfwidth_space(self):
+        base = {'survey_id': self.sid, 'answers': {'q3': '入力検証用'}, 'other': {}}
+        for name in (None, '', '   ', '日東　太郎'):
+            body = dict(base, id=str(uuid.uuid4()))
+            if name is not None:
+                body['name'] = name
+            response = self.client.post('/api/responses', json=body)
+            self.assertEqual(response.status_code, 400)
+            if name == '日東　太郎':
+                self.assertEqual(response.json['error'], 'スペースは半角にしてください。')
+        with self.app.app_context(), survey.connect() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM responses').fetchone()[0], 0)
+        valid = self.client.post('/api/responses', json=dict(base, id=str(uuid.uuid4()), name='日東 太郎'))
+        self.assertEqual(valid.status_code, 201)
+        with self.app.app_context(), survey.connect() as c:
+            self.assertEqual(json.loads(c.execute('SELECT payload FROM responses').fetchone()[0])['name'], '日東 太郎')
+
     def test_https_login_and_disabled_bootstrap(self):
         self.login()
         app = create_app({'TESTING': True, 'DATABASE': self.db, 'ALLOW_ADMIN_SETUP': False,
