@@ -1,0 +1,24 @@
+name: nbs-workation-check
+services:
+  app:
+    image: nbs-workation-check:local
+    build: .
+    environment:
+      ALLOWED_HOSTS: "app:8765,127.0.0.1:8765"
+      ALLOW_ADMIN_SETUP: "true"
+    volumes:
+      - check-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+  check:
+    image: nbs-workation-check:local
+    user: "0:0"
+    entrypoint: ["python", "/checks/docker_smoke.py"]
+    volumes:
+      - ./tests:/checks:ro
+      - check-state:/test-state
+    profiles: ["checks"]
+volumes:
+  check-data:
+  check-state:

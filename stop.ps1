@@ -1,8 +1,5 @@
 ﻿$ErrorActionPreference = 'Stop'
-$pidFile = Join-Path $PSScriptRoot 'server.pid'
-if (Test-Path -LiteralPath $pidFile) {
-    $taskPid = [int](Get-Content -LiteralPath $pidFile)
-    $taskProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$taskPid" -ErrorAction SilentlyContinue
-    if ($taskProcess -and $taskProcess.CommandLine -match 'server.py' -and $taskProcess.ExecutablePath -match 'python') { Stop-Process -Id $taskPid }
-    Remove-Item -LiteralPath $pidFile
-}
+Set-Location -LiteralPath $PSScriptRoot
+. (Join-Path $PSScriptRoot 'docker-command.ps1')
+Invoke-NbsDocker compose stop
+Write-Output 'Docker版を停止しました。回答データは保存されています。'

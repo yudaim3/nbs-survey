@@ -14,6 +14,10 @@ __pycache__/
 # Local dependencies and environment configuration
 node_modules/
 .venv/
+.venv-*/
+.python/
+*.egg-info/
+.pytest_cache/
 venv/
 .env
 .env.*
@@ -37,3 +41,6 @@ backups/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Kept locally only for a pre-upgrade server process; not used by the new app
+/export.mjs

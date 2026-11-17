@@ -1,0 +1,29 @@
+name: nbs-workation
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:${APP_PORT:-8765}:8765"
+    environment:
+      ALLOWED_HOSTS: "localhost:${APP_PORT:-8765},127.0.0.1:${APP_PORT:-8765},127.0.0.1:8765"
+      ALLOW_ADMIN_SETUP: "${ALLOW_ADMIN_SETUP:-true}"
+      PUBLIC_URL: "${PUBLIC_URL:-}"
+      SECURE_COOKIE: "${SECURE_COOKIE:-false}"
+    volumes:
+      - survey-data:/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  survey-data:

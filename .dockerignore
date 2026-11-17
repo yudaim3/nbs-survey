@@ -1,0 +1,11 @@
+**
+!Dockerfile
+!requirements.txt
+!server.py
+!webapp.py
+!survey.py
+!excel_export.py
+!data_transfer.py
+!schema.json
+!public/
+!public/**

@@ -1,0 +1,99 @@
+NBS WORKATION — このWindows PCへのDocker導入手順
+
+現在の状況
+・Dockerは未導入です。
+・WSL（Windows上でLinuxを動かす機能）とVirtual Machine Platformが無効です。
+・PCは仮想化機能を使用できる状態ですが、導入には管理者の許可と再起動が必要になる場合があります。
+・アプリのDocker用ファイルは準備済みです。実際のDocker起動確認は未実施です。
+
+1. 会社のPC管理者に確認する
+
+管理者が分からなければ、次をそのまま社内の担当者へ渡してください。
+
+「NBS WORKATIONのローカル動作確認用に、WSL 2とDockerの利用環境を準備したいです。
+このPCではWSLとVirtual Machine Platformが無効です。
+会社の利用ルールと、Docker Desktopの利用契約・インストール権限をご確認ください。
+必要なWindows機能の有効化、再起動、Docker起動までの対応をお願いします。
+インターネット公開はせず、localhostだけで検証します。」
+
+Docker Desktopは会社の規模・利用条件によって有料契約が必要な場合があります。
+契約判断は社内担当者に確認してください。アプリがDocker Desktop専用という意味ではなく、
+社内で承認されたWSL上のDocker Engineなどでも動かせる構成です。
+
+2. WSL 2を準備する（許可を得た担当者の操作）
+
+スタートメニューで「PowerShell」を検索し、「管理者として実行」を選びます。
+管理者パスワードが必要で分からなければ、ここで社内担当者に依頼してください。
+
+  wsl --install --no-distribution
+
+再起動を求められたら、開いているExcelなどを保存してから再起動します。
+再起動後、PowerShellで確認します。
+
+  wsl --version
+  wsl --status
+
+更新を求められた場合：
+
+  wsl --update
+
+手順・必要条件はMicrosoftの公式ページを確認してください。
+https://learn.microsoft.com/windows/wsl/install
+
+3. Docker Desktopを準備する
+
+会社で許可された方法、またはDocker公式サイトからWindows版をインストールします。
+https://docs.docker.com/desktop/setup/install/windows-install/
+
+初回起動時の契約確認・設定は、利用者または社内担当者が確認して進めてください。
+WSL 2バックエンドとLinuxコンテナを使用します。
+Docker Desktopを起動し、エンジンが実行中になるまで待ちます。
+PowerShellで確認します。
+
+  docker version
+  docker compose version
+
+docker versionでClientとServerの両方が表示されれば、実行環境の確認ができます。
+Serverへ接続できない場合はDocker Desktopの起動状態を確認してください。
+アプリ制御によるブロックが表示された場合は、制限を無効化せず社内担当者へ相談してください。
+
+4. このアプリをDockerでテストする
+
+このフォルダーでPowerShellを開き、次を実行します。
+
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\test-docker.ps1
+
+普段の回答とは別のテスト専用データで、ログイン・投稿・集計・Excel出力、
+コンテナを作り直した後のデータ保持を確認します。
+テスト終了時にはテスト用のコンテナだけを停止します。
+
+5. 通常のDocker版を起動する
+
+このフォルダーの start.cmd をダブルクリックします。
+初回はダウンロードとビルドに時間がかかります。
+既存Python版がserver.pidで管理されている場合は停止してから、
+既存の開催情報・回答・管理者設定をDockerの保存先へコピーします。
+元データは変更せず、Docker側に既存DBがある場合は上書きしません。
+別の方法で同じDBを使うPythonサーバーを起動した場合は先に停止してください。
+
+管理画面：http://localhost:8765/admin
+利用者画面：http://localhost:8765/
+
+従来のデータを移した場合は、これまでの管理者ID・パスワードを使えます。
+新規DBなら管理者の初回設定画面が出ます。
+終了は stop.cmd をダブルクリックします。
+Docker移行後は、回答はDocker側に保存され、元のdataフォルダーとは同期しません。
+
+6. 最後の確認
+
+・開催回を追加できる
+・その開催回のURLから回答できる
+・管理者画面で件数と集計を見られる
+・集計済みExcelをダウンロードし、6シートを開ける
+・停止し、再度起動しても開催回と回答が残る
+
+Dockerを導入できたら、Codexに「Dockerを導入したので実機確認を続けて」と伝えれば、
+未実施の確認から続けられます。
+
+このPCの追加ソフト導入と既存アプリの切り替えは、今回の自動操作ではポリシーにより拒否されました。
+Windowsの制限やセキュリティ設定を回避する操作は行っていません。
