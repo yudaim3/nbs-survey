@@ -88,11 +88,12 @@ def validate(body,schema=SCHEMA):
     result={}
     for q in schema['questions']:
         value=answers.get(q['id'])
-        if value is None or value=='' or value==[] or value=={}: continue
+        if value is None or value=='' or value==[] or value=={}: raise ValueError(f"Q{q['number']}に回答してください。")
         kind=q['type']; options=q.get('options',[])
         if kind=='text':
             if not isinstance(value,str) or len(value)>5000: raise ValueError(f"Q{q['number']}は5000文字以内で入力してください。")
             value=value.strip()
+            if not value: raise ValueError(f"Q{q['number']}に回答してください。")
         elif kind=='single':
             if not isinstance(value,str) or value not in options: raise ValueError(f"Q{q['number']}の選択肢が正しくありません。")
         elif kind=='multi':
@@ -103,6 +104,8 @@ def validate(body,schema=SCHEMA):
         else:
             valid=['1','2','3','4','5'] if kind=='rating' else ['1','2','3','4','5','6以上']
             if not isinstance(value,dict) or any(k not in options or v not in valid for k,v in value.items()): raise ValueError(f"Q{q['number']}の値が正しくありません。")
+            missing=next((option for option in options if option not in value),None)
+            if missing is not None: raise ValueError(f"Q{q['number']}の「{missing}」に回答してください。")
         if value: result[q['id']]=value
     name=body.get('name','')
     if not isinstance(name,str) or len(name)>100: raise ValueError('回答者名は100文字以内で入力してください。')
@@ -115,7 +118,10 @@ def validate(body,schema=SCHEMA):
         if key not in ['q8','q11','q13','q14'] or not isinstance(value,str) or len(value)>2000: raise ValueError('その他の補足は2000文字以内で入力してください。')
         selected=result.get(key,[])
         if (selected=='その他' or isinstance(selected,list) and 'その他' in selected) and value.strip(): cleaned[key]=value.strip()
-    if not result: raise ValueError('少なくとも1つの設問に回答してください。')
+    for q in schema['questions']:
+        selected=result[q['id']]
+        if (selected=='その他' or isinstance(selected,list) and 'その他' in selected) and q['id'] not in cleaned:
+            raise ValueError(f"Q{q['number']}の「その他の内容」を入力してください。")
     return rid,dict(name=name.strip(),answers=result,other=cleaned)
 
 def snapshot(survey_id):

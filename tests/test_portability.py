@@ -1,4 +1,5 @@
 import io
+import copy
 from contextlib import closing
 import json
 from pathlib import Path
@@ -11,6 +12,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from openpyxl import load_workbook
+from fixtures import complete_answers
 from webapp import create_app
 from data_transfer import copy_database
 import survey
@@ -40,13 +42,13 @@ class PortabilityTests(unittest.TestCase):
         text = '=HYPERLINK("https://example.invalid","test")\n' + '長文📝\n' * 900
         rid = str(uuid.uuid4())
         response = self.client.post('/api/responses', json={
-            'id': rid, 'survey_id': self.sid, 'name': '=1+1', 'answers': {'q3': text, 'q12': {'トイレ': '6以上'}}, 'other': {}})
+            'id': rid, 'survey_id': self.sid, 'name': '=1+1', 'answers': complete_answers(survey.SCHEMA, {'q3': text, 'q12': {'トイレ': '6以上'}}), 'other': {}})
         self.assertEqual(response.status_code, 201)
         result = self.client.get('/api/admin/export?survey=' + self.sid)
         self.assertEqual(result.status_code, 200)
         book = load_workbook(io.BytesIO(result.data), data_only=False)
         rows = list(book['自由記述一覧'].iter_rows(min_row=5, values_only=True))
-        self.assertEqual(''.join(r[6] for r in rows), text.strip())
+        self.assertEqual(''.join(r[6] for r in rows if r[2]=='Q3'), text.strip())
         self.assertEqual(book['自由記述一覧']['B5'].value, '=1+1')
         self.assertEqual(book['自由記述一覧']['B5'].data_type, 's')
         self.assertTrue(all(cell.data_type != 'f' for sheet in book for row in sheet for cell in row))
@@ -59,7 +61,7 @@ class PortabilityTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/auth/setup', data='x' * 250001, content_type='application/json').status_code, 413)
 
     def test_required_name_and_halfwidth_space(self):
-        base = {'survey_id': self.sid, 'answers': {'q3': '入力検証用'}, 'other': {}}
+        base = {'survey_id': self.sid, 'answers': complete_answers(survey.SCHEMA), 'other': {}}
         for name in (None, '', '   ', '日東　太郎'):
             body = dict(base, id=str(uuid.uuid4()))
             if name is not None:
@@ -89,6 +91,42 @@ class PortabilityTests(unittest.TestCase):
         fresh = create_app({'TESTING': True, 'DATABASE': str(Path(self.temp.name) / 'new.sqlite3'),
                             'ALLOW_ADMIN_SETUP': False, 'ALLOWED_HOSTS': {'localhost'}, 'PUBLIC_URL': ''})
         self.assertEqual(fresh.test_client().post('/api/auth/setup', json={'username':'test-admin','password':'Test-Only-Password-2026'}).status_code, 403)
+
+    def test_every_question_and_every_rating_row_is_required(self):
+        base = {'survey_id': self.sid, 'name': '検証 太郎', 'answers': complete_answers(survey.SCHEMA), 'other': {}}
+        invalid = []
+        for q in survey.SCHEMA['questions']:
+            missing = copy.deepcopy(base)
+            del missing['answers'][q['id']]
+            invalid.append((q['id'], missing))
+            empty = copy.deepcopy(base)
+            empty['answers'][q['id']] = '  \n　' if q['type']=='text' else [] if q['type']=='multi' else {} if q['type'] in ('rating','count') else ''
+            invalid.append((q['id'], empty))
+            if q['type'] in ('rating','count'):
+                for option in q['options']:
+                    missing_row = copy.deepcopy(base)
+                    del missing_row['answers'][q['id']][option]
+                    invalid.append((f"{q['id']}:{option}", missing_row))
+        for label, body in invalid:
+            with self.subTest(question=label):
+                body['id'] = str(uuid.uuid4())
+                response = self.client.post('/api/responses', json=body)
+                self.assertEqual(response.status_code, 400)
+        with self.app.app_context(), survey.connect() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM responses').fetchone()[0], 0)
+        self.assertEqual(self.client.post('/api/responses', json=dict(base,id=str(uuid.uuid4()))).status_code, 201)
+
+    def test_other_text_required_only_when_selected(self):
+        for key in ('q8','q11','q13','q14'):
+            with self.subTest(question=key):
+                answers = complete_answers(survey.SCHEMA, {key: 'その他' if key=='q11' else ['その他']})
+                for other in ({}, {key:' \n　'}):
+                    body = dict(id=str(uuid.uuid4()),survey_id=self.sid,name='検証 太郎',answers=answers,other=other)
+                    response = self.client.post('/api/responses', json=body)
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn('その他の内容', response.json['error'])
+                body = dict(id=str(uuid.uuid4()),survey_id=self.sid,name='検証 太郎',answers=answers,other={key:'その他の補足'})
+                self.assertEqual(self.client.post('/api/responses', json=body).status_code, 201)
 
     def test_snapshot_migration_and_refuse_overwrite(self):
         self.login()

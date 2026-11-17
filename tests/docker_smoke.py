@@ -8,6 +8,7 @@ import sys
 import urllib.request
 import uuid
 from openpyxl import load_workbook
+from fixtures import complete_answers
 
 BASE = 'http://app:8765'
 STATE = Path('/test-state/smoke.json')
@@ -31,7 +32,7 @@ if sys.argv[1] == 'seed':
     state['survey_id'] = str(uuid.uuid4())
     request('/api/admin/surveys', {'id': state['survey_id'], 'title': 'Docker自動検証用', 'start': '2026-11-16', 'end': '', 'place': 'テスト'})
     request('/api/responses', {'id': str(uuid.uuid4()), 'survey_id': state['survey_id'], 'name': 'テスト',
-                               'answers': {'q1': '4：満足', 'q3': 'Dockerからのテスト回答'}, 'other': {}})
+                               'answers': complete_answers(json.loads(request('/api/schema?survey='+state['survey_id']))['schema']), 'other': {}})
     STATE.write_text(json.dumps(state), encoding='utf-8')
 else:
     state = json.loads(STATE.read_text())

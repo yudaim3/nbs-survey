@@ -1,5 +1,6 @@
 import os,sys,json,uuid,tempfile,subprocess,time,urllib.request,urllib.error,http.cookiejar,sqlite3,socket
 from pathlib import Path
+from fixtures import complete_answers
 ROOT=Path(__file__).resolve().parents[1]
 with socket.socket() as probe:
     probe.bind(('127.0.0.1',0));PORT=probe.getsockname()[1]
@@ -14,7 +15,7 @@ def req(path,body=None,auth=True,headers=None):
 def val(path,auth=True):
     code,content=req(path,auth=auth);assert code==200,(code,content);return json.loads(content)
 def payload(sid,answers,name='テスト回答'):
-    return dict(id=str(uuid.uuid4()),survey_id=sid,name=name,answers=answers,other={})
+    return dict(id=str(uuid.uuid4()),survey_id=sid,name=name,answers=complete_answers(schema,answers),other={})
 def seed_legacy(folder):
     c=sqlite3.connect(Path(folder)/'survey.sqlite3')
     c.execute('CREATE TABLE responses (id TEXT PRIMARY KEY,created_at TEXT NOT NULL,payload TEXT NOT NULL)')
@@ -64,7 +65,7 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as temp:
         assert req('/api/responses',b,False)[0]==201
         assert req('/api/responses',payload(sid,{'q14':['サウナ','テラス','個室','大浴場']}),False)[0]==400
         assert req('/api/responses',payload(sid,{'q8':['特になし','Wi-Fi']}),False)[0]==400
-        assert req('/api/responses',payload(sid,{}),False)[0]==400
+        assert req('/api/responses',{**payload(sid,{}),'answers':{}},False)[0]==400
         assert req('/api/responses',payload(sid,{'q3':'a'}),False,{'Origin':'https://evil.example'})[0]==403
         d=val('/api/admin/data?survey='+sid);s=d['summary'];assert s['total']==2 and s['questions']['q1']['average']==4 and s['communication_rate']==.5
         assert val('/api/admin/data?survey='+legacy)['summary']['total']==1
@@ -76,7 +77,7 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as temp:
         assert w['集計サマリー']['B5'].value=='12月ワーケーション'
         assert w['集計サマリー']['B8'].value==2 and w['集計サマリー']['B9'].value==4 and w['集計サマリー']['B11'].value==.5
         rows=list(w['自由記述一覧'].iter_rows(min_row=5,values_only=True))
-        assert ''.join(str(r[6]) for r in rows if r[0]==b['id'])==b['answers']['q3']
+        assert ''.join(str(r[6]) for r in rows if r[0]==b['id'] and r[2]=='Q3')==b['answers']['q3']
         assert all(r[0]!=legacy_response for r in rows)
         assert len(w.sheetnames)==6
         assert val('/api/admin/backup?survey='+sid)['survey_id']==sid
