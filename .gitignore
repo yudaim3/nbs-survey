@@ -23,6 +23,7 @@ venv/
 .env.*
 !.env.example
 !.env.production.example
+!.env.aws-test.example
 *.pem
 *.key
 

@@ -1,0 +1,92 @@
+NBS SURVEY — EC2でIPアドレスから接続確認する
+
+対象：DockerとDocker ComposeがあるLinuxのEC2。
+ドメイン設定前にHTTPで確認するための構成です。
+ブラウザー → EC2の8080番 → アプリの8765番 → SQLite（永続ボリューム）
+
+HTTPは通信が暗号化されません。確認中はEC2のセキュリティグループの
+カスタムTCP 8080番の送信元を、確認するPCの公開IP（マイIP /32）に制限します。
+実際の個人情報を集める前に、AWS公開手順.txt のHTTPS構成へ切り替えてください。
+
+1. ソースのあるフォルダーで最新版を取得
+
+git pull --ff-only
+sudo docker compose version
+
+Composeが見つからない場合は、EC2の管理者にDocker Composeプラグインの導入を依頼します。
+以下はすべて、compose.aws-test.yaml があるフォルダーで実行します。
+compose.yaml と重ねず、-f compose.aws-test.yaml 単独で使用してください。
+
+2. 接続先を設定（初回のみ）
+
+cp .env.aws-test.example .env.aws-test
+nano .env.aws-test
+
+PUBLIC_HOST=EC2の実際のパブリックIPv4アドレス
+APP_PORT=8080
+
+PUBLIC_HOSTには http:// や :8080 を付けません。
+既存の .env.aws-test がある場合はコピーし直さず、必要な値だけ編集します。
+パブリックIPが変わった場合もこの値を変更し、下の起動コマンドを再実行します。
+実際の設定ファイルはGitの対象外です。
+
+3. 設定の確認・ビルド
+
+sudo docker compose --env-file .env.aws-test -f compose.aws-test.yaml config --quiet
+sudo docker compose --env-file .env.aws-test -f compose.aws-test.yaml build app
+
+4. 管理者を登録（新しいDBの初回のみ）
+
+sudo docker compose --env-file .env.aws-test -f compose.aws-test.yaml run --rm --no-deps app python server.py --create-admin
+
+管理者ID・パスワードを対話入力します。パスワードは12〜128文字です。
+Webから先に第三者が管理者登録することを防ぐため、Webの初回登録は無効です。
+既に管理者が登録済みなら、この手順を省略して既存アカウントを使います。
+
+5. 以前のコンテナを停止
+
+今回の「nbs-survey」は保存データがないことを利用者が確認済みです。
+その旧コンテナを停止して、8080番を空けます。削除は不要です。
+
+sudo docker stop nbs-survey
+
+旧コンテナがない新規環境では省略します。
+データがある別環境ではこの手順だけで移行せず、バックアップと復元が必要です。
+
+6. 新しい構成で起動
+
+sudo docker compose --env-file .env.aws-test -f compose.aws-test.yaml up -d --wait --wait-timeout 180
+sudo docker compose --env-file .env.aws-test -f compose.aws-test.yaml ps
+curl --max-time 5 http://127.0.0.1:8080/api/health
+
+起動後のコンテナ名は通常 nbs-workation-app-1 です。
+ポート表示が8080->8765/tcpとなり、health APIが正常ならEC2内部の接続は成功です。
+PCのブラウザーで http://EC2のパブリックIPv4アドレス:8080/admin を開きます。
+EC2内では接続できるのにPCから開けない場合は、セキュリティグループ、
+ルート、ネットワークACL、OSファイアウォールなどの通信経路を確認します。
+
+ログ確認：
+sudo docker compose --env-file .env.aws-test -f compose.aws-test.yaml logs --tail 100 app
+
+7. 次回以降の更新・停止
+
+git pull --ff-only
+sudo docker compose --env-file .env.aws-test -f compose.aws-test.yaml up -d --build --wait --wait-timeout 180
+
+停止：
+sudo docker compose --env-file .env.aws-test -f compose.aws-test.yaml stop
+
+回答・アンケート・管理者などは nbs-workation_survey-data に保存します。
+同じボリュームを使う限り、コンテナを更新してもデータを引き継ぎます。
+down -v やボリューム削除はしないでください。バックアップは別途必要です。
+ローカル用・IP確認用・HTTPS用の構成を、同じDocker環境で同時に動かさないでください。
+
+8. HTTPS公開へ切り替え
+
+AWS公開手順.txt に沿ってドメイン・DNS・80/443番の通信許可を設定します。
+IP確認用アプリを上のstopコマンドで停止した後、HTTPS用構成を起動します。
+両構成のプロジェクト名とボリューム名は同じなので、既存の回答と管理者を引き継ぎます。
+管理者の再登録は不要です。切り替え後は8080番の受信許可を削除します。
+
+検証状況：ソース上の設定とアプリのHTTP動作を検証します。
+この開発PCではDockerが使えないため、Docker実機の起動・外部接続はEC2側で確認してください。

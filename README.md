@@ -50,7 +50,15 @@ Docker用の `test-docker.ps1` にもカテゴリー・カスタム設問・任�
 - Composeファイルは公式JSON Schemaで検証済み。ベースイメージの存在も確認済み。
 - **このWindows PCではDocker / WSLが未導入のため、Dockerのビルド・起動テストは未実施です。**
 - 機能テストのPython本体には、このPCで利用可能な既存ランタイムを使用しています。Codex未導入PCでの実機確認はこれからです。
-- AWSにはまだ配置していません。
+- 利用者のAWS環境ではコンテナ起動を確認済み。外部接続と、今回追加したEC2用Compose構成の実機確認は未完了です。
+
+## AWSでIPアドレスから確認する
+
+ドメイン設定前の接続確認には `compose.aws-test.yaml` を単独で使います。
+EC2の8080番からアプリの8765番へ転送し、SQLiteを名前付きボリュームに保存します。
+公開IPは `.env.aws-test` に設定します。管理者は起動前にターミナルで登録します。
+手順は [AWSでのIP接続確認.txt](AWSでのIP接続確認.txt) を参照してください。
+これはHTTPの確認用です。HTTPS公開時は `compose.production.yaml` に切り替えます。
 
 ## 別PCでの確認・本番用設定
 
